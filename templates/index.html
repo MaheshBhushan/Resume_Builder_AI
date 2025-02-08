@@ -20,28 +20,49 @@
         </div>
 
         <div class="container">
-            <h1 class="title">Resume Builder</h1>
+            <h1 class="title">Creative Resume Builder</h1>
             <p class="description">
-                Analyze your resume and get suggestions for improvement, skill
-                learning, and project ideas.
+                Analyze your resume, get insightful feedback, and receive innovative suggestions to build your dream career!
             </p>
 
-            <div class="upload-section">
-                <h3 class="section-title">Upload Resume:</h3>
+            <div class="ai-config-section">
+                <h3 class="section-title">AI Provider Configuration:</h3>
                 <div class="input-container">
-                    <input type="file" id="resume-file-input" accept=".docx" />
+                    <select id="ai-provider-select" class="select-box">
+                        <option value="nebius">Nebius AI Studio</option>
+                        <option value="openai">OpenAI</option>
+                        <option value="gemini">Google Gemini</option>
+                        <option value="custom">Custom Provider</option>
+                    </select>
                 </div>
-            </div>
-
-            <div class="paste-section">
-                <h3 class="section-title">Paste Resume:</h3>
-                <div class="input-container">
-                    <textarea
-                        id="resume-text-input"
-                        class="input-box"
-                        rows="10"
-                        placeholder="Paste your resume here..."
-                    ></textarea>
+                
+                <div id="api-config-container" class="conditional-section">
+                    <div class="input-container">
+                        <input
+                            type="password"
+                            id="api-key-input"
+                            class="input-box"
+                            placeholder="Enter API Key"
+                        />
+                    </div>
+                    <div class="input-container">
+                        <input
+                            type="text"
+                            id="model-name-input"
+                            class="input-box"
+                            placeholder="Model Name (e.g., meta-llama/Llama-3.3-70B-Instruct-fast)"
+                        />
+                    </div>
+                    <div id="custom-endpoint-container" style="display: none;">
+                        <div class="input-container">
+                            <input
+                                type="text"
+                                id="api-endpoint-input"
+                                class="input-box"
+                                placeholder="API Endpoint (e.g., https://api.studio.nebius.ai/v1)"
+                            />
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -90,6 +111,25 @@
                 </div>
             </div>
 
+            <div class="upload-section">
+                <h3 class="section-title">Upload Resume:</h3>
+                <div class="input-container">
+                    <input type="file" id="resume-file-input" accept=".docx" />
+                </div>
+            </div>
+
+            <div class="paste-section">
+                <h3 class="section-title">Paste Resume:</h3>
+                <div class="input-container">
+                    <textarea
+                        id="resume-text-input"
+                        class="input-box"
+                        rows="10"
+                        placeholder="Paste your resume here..."
+                    ></textarea>
+                </div>
+            </div>
+
             <div class="submit-container">
                 <button id="submit-button" class="submit-button">Submit</button>
             </div>
@@ -107,10 +147,21 @@
                 <h2 class="output-title">Projects to Build</h2>
                 <div id="projects-to-build-output" class="output-box"></div>
             </div>
+
+            <div id="loading-overlay" class="loading-overlay" style="display: none;">
+                <div class="spinner"></div>
+            </div>
         </div>
 
         <script>
             document.addEventListener("DOMContentLoaded", function () {
+                function showSpinner() {
+                    document.getElementById("loading-overlay").style.display = "flex";
+                }
+                function hideSpinner() {
+                    document.getElementById("loading-overlay").style.display = "none";
+                }
+
                 const optionSelect = document.getElementById("option-select");
                 const jobDescriptionContainer = document.getElementById(
                     "job-description-container",
@@ -151,12 +202,51 @@
                     }
                 });
 
+                // Validation function
+                function validateInputs() {
+                    // Check API configuration
+                    if (!apiKeyInput.value.trim()) {
+                        alert("Please enter your API key");
+                        return false;
+                    }
+                    if (!modelNameInput.value.trim()) {
+                        alert("Please enter the model name");
+                        return false;
+                    }
+                    if (!apiEndpointInput.value.trim()) {
+                        alert("Please enter the API endpoint");
+                        return false;
+                    }
+
+                    // Check resume input
+                    const hasFile = resumeFileInput.files.length > 0;
+                    const hasText = resumeTextInput.value.trim().length > 0;
+                    if (!hasFile && !hasText) {
+                        alert("Please either upload a resume file or paste resume text");
+                        return false;
+                    }
+
+                    // Check field of interest if selected
+                    if (optionSelect.value === "field_of_interest") {
+                        const fieldOfInterest = document.getElementById("field-of-interest-input").value.trim();
+                        if (!fieldOfInterest) {
+                            alert("Please enter your field of interest");
+                            return false;
+                        }
+                    }
+
+                    return true;
+                }
+
                 // Handle file upload
                 resumeFileInput.addEventListener(
                     "change",
                     async function (event) {
                         const file = event.target.files[0];
                         if (file) {
+                            if (!validateInputs()) {
+                                return;
+                            }
                             const formData = new FormData();
                             formData.append("resume_file", file);
                             formData.append("option", optionSelect.value);
@@ -166,8 +256,11 @@
                                     .getElementById("field-of-interest-input")
                                     .value.trim(),
                             );
+                            formData.append("api_key", document.getElementById("api-key-input").value);
+                            formData.append("model", document.getElementById("model-name-input").value);
+                            formData.append("api_endpoint", document.getElementById("api-endpoint-input").value);
 
-                            // Call the Flask API with formData
+                            showSpinner();
                             try {
                                 const response = await axios.post(
                                     "/process_resume",
@@ -223,6 +316,8 @@
                                         "An error occurred. Please try again.",
                                     );
                                 }
+                            } finally {
+                                hideSpinner();
                             }
                         }
                     },
@@ -232,24 +327,31 @@
                 document
                     .getElementById("submit-button")
                     .addEventListener("click", async function () {
-                        const resumeFile = resumeFileInput.files[0];
-                        let resumeText = resumeTextInput.value.trim();
-                        const option = optionSelect.value;
-                        let fieldOfInterest = document
-                            .getElementById("field-of-interest-input")
-                            .value.trim();
+                        if (!validateInputs()) {
+                            return;
+                        }
+                        showSpinner();
+                        try {
+                            const resumeFile = resumeFileInput.files[0];
+                            let resumeText = resumeTextInput.value.trim();
+                            const option = optionSelect.value;
+                            let fieldOfInterest = document
+                                .getElementById("field-of-interest-input")
+                                .value.trim();
 
-                        if (resumeFile) {
-                            const formData = new FormData();
-                            formData.append("resume_file", resumeFile);
-                            formData.append("option", option);
-                            formData.append(
-                                "field_of_interest",
-                                fieldOfInterest,
-                            );
+                            if (resumeFile) {
+                                const formData = new FormData();
+                                formData.append("resume_file", resumeFile);
+                                formData.append("option", option);
+                                formData.append(
+                                    "field_of_interest",
+                                    fieldOfInterest,
+                                );
+                                formData.append("api_key", document.getElementById("api-key-input").value);
+                                formData.append("model", document.getElementById("model-name-input").value);
+                                formData.append("api_endpoint", document.getElementById("api-endpoint-input").value);
 
-                            // Call the Flask API with formData
-                            try {
+                                // Call the Flask API with formData
                                 const response = await axios.post(
                                     "/process_resume",
                                     formData,
@@ -288,32 +390,17 @@
                                 optionSelect.value = "";
                                 jobDescriptionContainer.style.display = "none";
                                 fieldOfInterestContainer.style.display = "none";
-                            } catch (error) {
-                                console.error(
-                                    "Error processing resume:",
-                                    error,
-                                );
-                                if (
-                                    error.response &&
-                                    error.response.data &&
-                                    error.response.data.error
-                                ) {
-                                    alert(error.response.data.error);
-                                } else {
-                                    alert(
-                                        "An error occurred. Please try again.",
-                                    );
-                                }
-                            }
-                        } else if (resumeText) {
-                            // Call the Flask API with JSON data
-                            try {
+                            } else if (resumeText) {
+                                // Call the Flask API with JSON data
                                 const response = await axios.post(
                                     "/process_resume",
                                     {
                                         resume_text: resumeText,
                                         option: option,
                                         field_of_interest: fieldOfInterest,
+                                        api_key: document.getElementById("api-key-input").value,
+                                        model: document.getElementById("model-name-input").value,
+                                        api_endpoint: document.getElementById("api-endpoint-input").value,
                                     },
                                 );
 
@@ -350,29 +437,71 @@
                                 optionSelect.value = "";
                                 jobDescriptionContainer.style.display = "none";
                                 fieldOfInterestContainer.style.display = "none";
-                            } catch (error) {
-                                console.error(
-                                    "Error processing resume:",
-                                    error,
+                            } else {
+                                alert(
+                                    "Please fill in the resume text or upload a valid resume file.",
                                 );
-                                if (
-                                    error.response &&
-                                    error.response.data &&
-                                    error.response.data.error
-                                ) {
-                                    alert(error.response.data.error);
-                                } else {
-                                    alert(
-                                        "An error occurred. Please try again.",
-                                    );
-                                }
                             }
-                        } else {
-                            alert(
-                                "Please fill in the resume text or upload a valid resume file.",
+                        } catch (error) {
+                            console.error(
+                                "Error processing resume:",
+                                error,
                             );
+                            if (
+                                error.response &&
+                                error.response.data &&
+                                error.response.data.error
+                            ) {
+                                alert(error.response.data.error);
+                            } else {
+                                alert(
+                                    "An error occurred. Please try again.",
+                                );
+                            }
+                        } finally {
+                            hideSpinner();
                         }
                     });
+
+                // AI Provider Configuration Handling
+                const aiProviderSelect = document.getElementById("ai-provider-select");
+                const apiConfigContainer = document.getElementById("api-config-container");
+                const customEndpointContainer = document.getElementById("custom-endpoint-container");
+                const apiKeyInput = document.getElementById("api-key-input");
+                const modelNameInput = document.getElementById("model-name-input");
+                const apiEndpointInput = document.getElementById("api-endpoint-input");
+
+                // Set default values based on provider
+                function setDefaultValues(provider) {
+                    switch(provider) {
+                        case "nebius":
+                            modelNameInput.value = "meta-llama/Llama-3.3-70B-Instruct-fast";
+                            apiEndpointInput.value = "https://api.studio.nebius.ai/v1";
+                            break;
+                        case "openai":
+                            modelNameInput.value = "gpt-3.5-turbo";
+                            apiEndpointInput.value = "https://api.openai.com/v1";
+                            break;
+                        case "gemini":
+                            modelNameInput.value = "gemini-1.5-pro";
+                            apiEndpointInput.value = "https://generativelanguage.googleapis.com/v1beta/models";
+                            break;
+                        case "custom":
+                            modelNameInput.value = "";
+                            apiEndpointInput.value = "";
+                            break;
+                    }
+                }
+
+                aiProviderSelect.addEventListener("change", function() {
+                    const selectedProvider = aiProviderSelect.value;
+                    apiConfigContainer.style.display = "block";
+                    customEndpointContainer.style.display = selectedProvider === "custom" ? "block" : "none";
+                    setDefaultValues(selectedProvider);
+                });
+
+                // Initialize with default provider
+                setDefaultValues("nebius");
             });
         </script>
     </body>
